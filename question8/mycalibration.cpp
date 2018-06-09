@@ -217,46 +217,43 @@ CV_IMPL void cvFindExtrinsicCameraParams2(const CvMat* objectPoints,
 
 CV_IMPL void myInitIntrinsicParams2D(const CvMat* objectPoints,
 	const CvMat* imagePoints, const CvMat* npoints,
-	CvSize imageSize, CvMat* cameraMatrix,
-	double aspectRatio)
+	CvSize imageSize, CvMat* cameraMatrix)
 {
-	Ptr<CvMat> matA, _b, _allH;
+	Ptr<CvMat> matA, _b;
 
-	int i, j, pos, nimages, ni = 0;
-	double a[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 1 };
-	double H[9], f[2];
-	CvMat _a = cvMat(3, 3, CV_64F, a);
+	int i, j, pos, num_images, ni = 0;
+	double camera_parameters[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+	double H[9], focal_len[2];
+	CvMat _cameraMat = cvMat(3, 3, CV_64F, camera_parameters);
 	CvMat matH = cvMat(3, 3, CV_64F, H);//homography
-	CvMat _f = cvMat(2, 1, CV_64F, f);//focal length
+	CvMat _focal_length = cvMat(2, 1, CV_64F, focal_len);//focal length
 	/*whether the point data is legal*/
 
-	nimages = npoints->rows + npoints->cols - 1;//the number of images
+	num_images = npoints->rows + npoints->cols - 1;//the number of images
 
-	matA = cvCreateMat(2 * nimages, 2, CV_64F);
-	_b = cvCreateMat(2 * nimages, 1, CV_64F);
+	matA = cvCreateMat(2 * num_images, 2, CV_64F);
+	_b = cvCreateMat(2 * num_images, 1, CV_64F);
 	/*the principle points*/
-	a[2] = (!imageSize.width) ? 0.5 : (imageSize.width - 1)*0.5;
-	a[5] = (!imageSize.height) ? 0.5 : (imageSize.height - 1)*0.5;
-	_allH = cvCreateMat(nimages, 9, CV_64F);
+	camera_parameters[2] = (!imageSize.width) ? 0.5 : (imageSize.width - 1)*0.5;
+	camera_parameters[5] = (!imageSize.height) ? 0.5 : (imageSize.height - 1)*0.5;
 
 	// calculating 
-	for (i = 0, pos = 0; i < nimages; i++, pos += ni)
+	for (i = 0, pos = 0; i < num_images; i++, pos += ni)
 	{
 		double* Ap = matA->data.db + i * 4;
 		double* bp = _b->data.db + i * 2;
 		ni = npoints->data.i[i];
 		double h[3], v[3], d1[3], d2[3];
 		double n[4] = { 0,0,0,0 };
-		CvMat _m, matM;
-		cvGetCols(objectPoints, &matM, pos, pos + ni);
-		cvGetCols(imagePoints, &_m, pos, pos + ni);
+		CvMat _imageMat, _objectMat;
+		cvGetCols(objectPoints, &_objectMat, pos, pos + ni);
+		cvGetCols(imagePoints, &_imageMat, pos, pos + ni);
 
 
-		cvFindHomography(&matM, &_m, &matH);
-		memcpy(_allH->data.db + i * 9, H, sizeof(H));
+		cvFindHomography(&_objectMat, &_imageMat, &matH);
 		/*Translation change*/
-		H[0] -= H[6] * a[2]; H[1] -= H[7] * a[2]; H[2] -= H[8] * a[2];
-		H[3] -= H[6] * a[5]; H[4] -= H[7] * a[5]; H[5] -= H[8] * a[5];
+		H[0] -= H[6] * camera_parameters[2]; H[1] -= H[7] * camera_parameters[2]; H[2] -= H[8] * camera_parameters[2];
+		H[3] -= H[6] * camera_parameters[5]; H[4] -= H[7] * camera_parameters[5]; H[5] -= H[8] * camera_parameters[5];
 		/*Then the H is :
 						[ f_1 0   0 ]
 						[ 0   f_2 0 ] *  [R|t]
@@ -295,13 +292,13 @@ CV_IMPL void myInitIntrinsicParams2D(const CvMat* objectPoints,
 		Ap[2] = d1[0] * d2[0]; Ap[3] = d1[1] * d2[1];
 		bp[0] = -h[2] * v[2]; bp[1] = -d1[2] * d2[2];
 	}
-	/*solve the linear system matA*_f=_b, where _f is the reciprocal of focal length, matA is the inverse of rotation matrix*/
-	cvSolve(matA, _b, &_f, CV_NORMAL + CV_SVD);//Least-squares solution
-	a[0] = sqrt(fabs(1. / f[0]));
-	a[4] = sqrt(fabs(1. / f[1]));
+	/*solve the linear system matA*_focal_length=_b, where _focal_length is the reciprocal of focal length, matA is the inverse of rotation matrix*/
+	cvSolve(matA, _b, &_focal_length, CV_NORMAL + CV_SVD);//Least-squares solution
+	camera_parameters[0] = sqrt(fabs(1. / focal_len[0]));
+	camera_parameters[4] = sqrt(fabs(1. / focal_len[1]));
 
 
-	cvConvert(&_a, cameraMatrix);
+	cvConvert(&_cameraMat, cameraMatrix);
 }
 CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 	const CvMat* imagePoints, const CvMat* npoints,
@@ -314,8 +311,8 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 	CvLevMarq solver;
 	double reprojErr = 0;//return value
 
-	double A[9], k[8] = { 0,0,0,0,0,0,0,0 };
-	CvMat matA = cvMat(3, 3, CV_64F, A), _k;
+	double Camera_Parameters[9], k[8] = { 0,0,0,0,0,0,0,0 };
+	CvMat CaMat = cvMat(3, 3, CV_64F, Camera_Parameters), _k;
 	int i, nimages/*the number of images*/, maxPoints = 0, total = 0;/*the total number of points*/
 	int ni = 0, pos, nparams, npstep, cn;
 	double aspectRatio = 0.;
@@ -349,47 +346,26 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 			flags |= CV_CALIB_FIX_K3;
 		flags |= CV_CALIB_FIX_K4 | CV_CALIB_FIX_K5 | CV_CALIB_FIX_K6;
 	}
-	const double minValidAspectRatio = 0.01;
-	const double maxValidAspectRatio = 100.0;
 
 	//1. initialize intrinsic parameters & LM solver
 	/*fing initial guess of homography*/
-	myInitIntrinsicParams2D(matM, _m, npoints, imageSize, &matA, aspectRatio);
+	myInitIntrinsicParams2D(matM, _m, npoints, imageSize, &CaMat);
 	/*Levenberg-Marquardt Algorithm */
 	solver.init(nparams, 0, termCrit);
 	{
 		double* param = solver.param->data.db;
 		uchar* mask = solver.mask->data.ptr;
-		param[0] = A[0]; param[1] = A[4]; //focal length
-		param[2] = A[2]; param[3] = A[5];//principle point
+		param[0] = Camera_Parameters[0]; param[1] = Camera_Parameters[4];//focal length
+		param[2] = Camera_Parameters[2]; param[3] = Camera_Parameters[5];//principle point
 		/*disortions*/
 		param[4] = k[0]; param[5] = k[1]; param[6] = k[2]; param[7] = k[3];
 		param[8] = k[4]; param[9] = k[5]; param[10] = k[6]; param[11] = k[7];
-		if (flags & CALIB_FIX_ASPECT_RATIO)
-			mask[0] = 0;
-		if (flags & CV_CALIB_FIX_FOCAL_LENGTH)
-			mask[0] = mask[1] = 0;
-		if (flags & CV_CALIB_FIX_PRINCIPAL_POINT)
-			mask[2] = mask[3] = 0;
-		if (flags & CV_CALIB_ZERO_TANGENT_DIST)
-		{
-			param[6] = param[7] = 0;
-			mask[6] = mask[7] = 0;
-		}
 		if (!(flags & CV_CALIB_RATIONAL_MODEL))
 			flags |= CV_CALIB_FIX_K4 + CV_CALIB_FIX_K5 + CV_CALIB_FIX_K6;
-		if (flags & CV_CALIB_FIX_K1)
-			mask[4] = 0;
-		if (flags & CV_CALIB_FIX_K2)
-			mask[5] = 0;
-		if (flags & CV_CALIB_FIX_K3)
-			mask[8] = 0;
-		if (flags & CV_CALIB_FIX_K4)
-			mask[9] = 0;
-		if (flags & CV_CALIB_FIX_K5)
-			mask[10] = 0;
-		if (flags & CV_CALIB_FIX_K6)
-			mask[11] = 0;
+		/*Do not consider k4,k5,k6*/
+		mask[9] = 0;
+		mask[10] = 0;
+		mask[11] = 0;
 	}
 	//2. initialize extrinsic parameters
 	for (i = 0, pos = 0; i < nimages; i++, pos += ni)
@@ -402,7 +378,7 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 
 		cvGetCols(matM, &_Mi, pos, pos + ni);
 		cvGetCols(_m, &_mi, pos, pos + ni);
-		cvFindExtrinsicCameraParams2(&_Mi, &_mi, &matA, &_k, &_ri, &_ti);
+		cvFindExtrinsicCameraParams2(&_Mi, &_mi, &CaMat, &_k, &_ri, &_ti);
 	}
 	// 3. run the optimization
 	for (;;)
@@ -412,10 +388,11 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 		double* _errNorm = 0;
 		bool proceed = solver.updateAlt(_param, _JtJ, _JtErr, _errNorm);
 		double *param = solver.param->data.db, *pparam = solver.prevParam->data.db;
-
+		
 
 		/*the first 12 parameters*/
-		A[0] = param[0]; A[4] = param[1]; A[2] = param[2]; A[5] = param[3];
+		Camera_Parameters[0] = param[0]; Camera_Parameters[4] = param[1];//focal length
+		Camera_Parameters[2] = param[2]; Camera_Parameters[5] = param[3];//principle point
 		k[0] = param[4]; k[1] = param[5]; k[2] = param[6]; k[3] = param[7];
 		k[4] = param[8]; k[5] = param[9]; k[6] = param[10]; k[7] = param[11];
 
@@ -426,14 +403,14 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 
 		for (i = 0, pos = 0; i < nimages; i++, pos += ni)
 		{
-			CvMat _Mi, _mi, _ri, _ti, _dpdr, _dpdt, _dpdf, _dpdc, _dpdk, _mp, _part;
+			CvMat _ObjectP, _ImageP, _ri, _ti, _dpdr, _dpdt, _dpdf, _dpdc, _dpdk, _imageP2, _part;
 			ni = npoints->data.i[i*npstep];
 			/*get rotation and translation vector*/
 			cvGetRows(solver.param, &_ri, NINTRINSIC + i * 6, NINTRINSIC + i * 6 + 3);
 			cvGetRows(solver.param, &_ti, NINTRINSIC + i * 6 + 3, NINTRINSIC + i * 6 + 6);
 			/*get object points and image points*/
-			cvGetCols(matM, &_Mi, pos, pos + ni);
-			cvGetCols(_m, &_mi, pos, pos + ni);
+			cvGetCols(matM, &_ObjectP, pos, pos + ni);
+			cvGetCols(_m, &_ImageP, pos, pos + ni);
 
 			_Je->rows = _Ji->rows = _err->rows = ni * 2;
 			cvGetCols(_Je, &_dpdr, 0, 3);
@@ -441,19 +418,16 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 			cvGetCols(_Ji, &_dpdf, 0, 2);
 			cvGetCols(_Ji, &_dpdc, 2, 4);
 			cvGetCols(_Ji, &_dpdk, 4, NINTRINSIC);
-			cvReshape(_err, &_mp, 2, 1);
+			cvReshape(_err, &_imageP2, 2, 1);
 
 			if (_JtJ || _JtErr)
 			{
-				cvProjectPoints2(&_Mi, &_ri, &_ti, &matA, &_k, &_mp, &_dpdr, &_dpdt,
-					(flags & CV_CALIB_FIX_FOCAL_LENGTH) ? 0 : &_dpdf,
-					(flags & CV_CALIB_FIX_PRINCIPAL_POINT) ? 0 : &_dpdc, &_dpdk,
-					(flags & CV_CALIB_FIX_ASPECT_RATIO) ? aspectRatio : 0);
+				cvProjectPoints2(&_ObjectP, &_ri, &_ti, &CaMat, &_k, &_imageP2, &_dpdr, &_dpdt, &_dpdf, &_dpdc, &_dpdk, 0);
 			}
 			else
-				cvProjectPoints2(&_Mi, &_ri, &_ti, &matA, &_k, &_mp);
+				cvProjectPoints2(&_ObjectP, &_ri, &_ti, &CaMat, &_k, &_imageP2);
 
-			cvSub(&_mp, &_mi, &_mp);
+			cvSub(&_imageP2, &_ImageP, &_imageP2);
 
 			if (_JtJ || _JtErr)
 			{
@@ -473,14 +447,14 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 				cvGEMM(_Je, _err, 1, 0, 0, &_part, CV_GEMM_A_T);
 			}
 
-			double errNorm = cvNorm(&_mp, 0, CV_L2);
+			double errNorm = cvNorm(&_imageP2, 0, CV_L2);
 			reprojErr += errNorm * errNorm;
 		}
 		if (_errNorm)
 			*_errNorm = reprojErr;
 	}
 	// 4. store the results
-	cvConvert(&matA, cameraMatrix);
+	cvConvert(&CaMat, cameraMatrix);
 	cvConvert(&_k, distCoeffs);
 
 	for (i = 0; i < nimages; i++)
@@ -493,8 +467,8 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 			{
 				dst = cvMat(3, 3, CV_MAT_DEPTH(rvecs->type),
 					rvecs->data.ptr + rvecs->step*i);
-				cvRodrigues2(&src, &matA);
-				cvConvert(&matA, &dst);
+				cvRodrigues2(&src, &CaMat);
+				cvConvert(&CaMat, &dst);
 			}
 			else
 			{
