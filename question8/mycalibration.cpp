@@ -19,7 +19,7 @@ CV_IMPL void cvFindExtrinsicCameraParams2(const CvMat* objectPoints,
 	CvMat matR = cvMat(3, 3, CV_64F, R);
 	CvMat _r = cvMat(3, 1, CV_64F, param);
 	CvMat _t = cvMat(3, 1, CV_64F, param + 3);
-	CvMat _Mc = cvMat(1, 3, CV_64F, Mc.val);//delta
+	CvMat _Mc = cvMat(1, 3, CV_64F, Mc.val);
 	CvMat _MM = cvMat(3, 3, CV_64F, MM);
 	CvMat matU = cvMat(3, 3, CV_64F, U);
 	CvMat matV = cvMat(3, 3, CV_64F, V);//svd_v
@@ -124,53 +124,7 @@ CV_IMPL void cvFindExtrinsicCameraParams2(const CvMat* objectPoints,
 
 			cvRodrigues2(&matR, &_r);
 		}
-		else
-		{
-			// non-planar structure. Use DLT method
-			double* L;
-			double LL[12 * 12], LW[12], LV[12 * 12], sc;
-			CvMat _LL = cvMat(12, 12, CV_64F, LL);
-			CvMat _LW = cvMat(12, 1, CV_64F, LW);
-			CvMat _LV = cvMat(12, 12, CV_64F, LV);
-			CvMat _RRt, _RR, _tt;
-			CvPoint3D64f* M = (CvPoint3D64f*)matM->data.db;
-			CvPoint2D64f* mn = (CvPoint2D64f*)_mn->data.db;
-
-			matL = cvCreateMat(2 * count, 12, CV_64F);
-			L = matL->data.db;
-
-			for (i = 0; i < count; i++, L += 24)
-			{
-				double x = -mn[i].x, y = -mn[i].y;
-				L[0] = L[16] = M[i].x;
-				L[1] = L[17] = M[i].y;
-				L[2] = L[18] = M[i].z;
-				L[3] = L[19] = 1.;
-				L[4] = L[5] = L[6] = L[7] = 0.;
-				L[12] = L[13] = L[14] = L[15] = 0.;
-				L[8] = x * M[i].x;
-				L[9] = x * M[i].y;
-				L[10] = x * M[i].z;
-				L[11] = x;
-				L[20] = y * M[i].x;
-				L[21] = y * M[i].y;
-				L[22] = y * M[i].z;
-				L[23] = y;
-			}
-
-			cvMulTransposed(matL, &_LL, 1);
-			cvSVD(&_LL, &_LW, 0, &_LV, CV_SVD_MODIFY_A + CV_SVD_V_T);
-			_RRt = cvMat(3, 4, CV_64F, LV + 11 * 12);
-			cvGetCols(&_RRt, &_RR, 0, 3);
-			cvGetCol(&_RRt, &_tt, 3);
-			if (cvDet(&_RR) < 0)
-				cvScale(&_RRt, &_RRt, -1);
-			sc = cvNorm(&_RR);
-			cvSVD(&_RR, &matW, &matU, &matV, CV_SVD_MODIFY_A + CV_SVD_U_T + CV_SVD_V_T);
-			cvGEMM(&matU, &matV, 1, 0, 0, &matR, CV_GEMM_A_T);
-			cvScale(&_tt, &_t, cvNorm(&matR) / sc);
-			cvRodrigues2(&matR, &_r);
-		}
+		else;
 	}
 
 	cvReshape(matM, matM, 3, 1);
