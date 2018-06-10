@@ -304,7 +304,7 @@ CV_IMPL void myInitIntrinsicParams2D(const CvMat* objectPoints,
 CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 	const CvMat* imagePoints, const CvMat* npoints,
 	CvSize imageSize, CvMat* cameraMatrix, CvMat* distCoeffs,
-	CvMat* rvecs, CvMat* tvecs, int flags, CvTermCriteria termCrit)
+	CvMat* rvecs, CvMat* tvecs, CvTermCriteria termCrit)
 {
 	const int NINTRINSIC = 12;//number of internal parameters
 	Ptr<CvMat> matM, _m, _Ji, _Je, _err;
@@ -341,12 +341,7 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 	cvZero(_Ji);
 
 	_k = cvMat(distCoeffs->rows, distCoeffs->cols, CV_MAKETYPE(CV_64F, CV_MAT_CN(distCoeffs->type)), k);
-	if (distCoeffs->rows*distCoeffs->cols*CV_MAT_CN(distCoeffs->type) < 8)
-	{
-		if (distCoeffs->rows*distCoeffs->cols*CV_MAT_CN(distCoeffs->type) < 5)
-			flags |= CV_CALIB_FIX_K3;
-		flags |= CV_CALIB_FIX_K4 | CV_CALIB_FIX_K5 | CV_CALIB_FIX_K6;
-	}
+	
 
 	//1. initialize intrinsic parameters & LM solver
 	/*fing initial guess of homography*/
@@ -361,8 +356,7 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 		/*disortions*/
 		param[4] = k[0]; param[5] = k[1]; param[6] = k[2]; param[7] = k[3];
 		param[8] = k[4]; param[9] = k[5]; param[10] = k[6]; param[11] = k[7];
-		if (!(flags & CV_CALIB_RATIONAL_MODEL))
-			flags |= CV_CALIB_FIX_K4 + CV_CALIB_FIX_K5 + CV_CALIB_FIX_K6;
+		
 		/*Do not consider k4,k5,k6*/
 		mask[9] = 0;
 		mask[10] = 0;
@@ -501,7 +495,7 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 double mycalibrateCamera(InputArrayOfArrays _objectPoints,
 	InputArrayOfArrays _imagePoints,
 	Size imageSize, InputOutputArray _cameraMatrix, InputOutputArray _distCoeffs,
-	OutputArrayOfArrays _rvecs, OutputArrayOfArrays _tvecs, int flags, TermCriteria criteria)
+	OutputArrayOfArrays _rvecs, OutputArrayOfArrays _tvecs, TermCriteria criteria)
 {
 	/*initialize the camera matrix and the distortion vector*/
 	Mat cameraMatrix0 = _cameraMatrix.getMat();
@@ -550,7 +544,7 @@ double mycalibrateCamera(InputArrayOfArrays _objectPoints,
 	/*start to calculate*/
 	double reprojErr = myCalibrateCamera2(&c_objPt, &c_imgPt, &c_npoints, imageSize,
 		&c_cameraMatrix, &c_distCoeffs, &c_rvecM,
-		&c_tvecM, flags, criteria);
+		&c_tvecM, criteria);
 
 
 
