@@ -260,7 +260,8 @@ CV_IMPL void myInitIntrinsicParams2D(const CvMat* objectPoints,
 						[ 0   0   1 ]
 		  According to the paper, Using the knowledge that r1 and r2 are orthonormal, we have:
 						h_T_1 A−T A−1h_2 = 0 (3)
-						h_T_1 A−T A−1h_1 = h_T_2 A−T A−1h_2 . (4)
+						h_T_1 A−T A−1h_1 = h_T_2 A−T A−1h_2 . (4)
+
 		*/
 		for (j = 0; j < 3; j++)
 		{
@@ -388,7 +389,7 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 		double* _errNorm = 0;
 		bool proceed = solver.updateAlt(_param, _JtJ, _JtErr, _errNorm);
 		double *param = solver.param->data.db, *pparam = solver.prevParam->data.db;
-		
+		int test;
 
 		/*the first 12 parameters*/
 		Camera_Parameters[0] = param[0]; Camera_Parameters[4] = param[1];//focal length
@@ -413,24 +414,32 @@ CV_IMPL double myCalibrateCamera2(const CvMat* objectPoints,
 			cvGetCols(_m, &_ImageP, pos, pos + ni);
 
 			_Je->rows = _Ji->rows = _err->rows = ni * 2;
+			//Optional Nx3 matrix of derivatives of image points with respect to components of the rotation vector
 			cvGetCols(_Je, &_dpdr, 0, 3);
+			//Optional Nx3 matrix of derivatives of image points w.r.t.components of the translation vector
 			cvGetCols(_Je, &_dpdt, 3, 6);
+			//Optional Nx2 matrix of derivatives of image points w.r.t. fx and fy
 			cvGetCols(_Ji, &_dpdf, 0, 2);
+			//Optional Nx2 matrix of derivatives of image points w.r.t. cx and cy
 			cvGetCols(_Ji, &_dpdc, 2, 4);
+			//Optional Nx4 matrix of derivatives of image points w.r.t.distortion coefficients
 			cvGetCols(_Ji, &_dpdk, 4, NINTRINSIC);
 			cvReshape(_err, &_imageP2, 2, 1);
 
-			if (_JtJ || _JtErr)
+			if (test=(_JtJ || _JtErr))
 			{
+				/*Calculate the Jacobian matrix*/
 				cvProjectPoints2(&_ObjectP, &_ri, &_ti, &CaMat, &_k, &_imageP2, &_dpdr, &_dpdt, &_dpdf, &_dpdc, &_dpdk, 0);
+				test=0;
 			}
 			else
 				cvProjectPoints2(&_ObjectP, &_ri, &_ti, &CaMat, &_k, &_imageP2);
 
 			cvSub(&_imageP2, &_ImageP, &_imageP2);
-
-			if (_JtJ || _JtErr)
+			/*Input J^T*J*/
+			if (test=(_JtJ || _JtErr))
 			{
+				/*intrinsic parameters have nothing to do with different points*/
 				cvGetSubRect(_JtJ, &_part, cvRect(0, 0, NINTRINSIC, NINTRINSIC));
 				cvGEMM(_Ji, _Ji, 1, &_part, 1, &_part, CV_GEMM_A_T);
 
